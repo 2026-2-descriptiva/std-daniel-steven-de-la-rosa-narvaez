@@ -1,3 +1,9 @@
+import gzip
+from pathlib import Path
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_01():
     """
     Calcule la suma de los valores de la segunda columna (`value`) del
@@ -8,4 +14,7 @@ def pregunta_01():
         214
     """
 
-    raise NotImplementedError
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8") as file:
+        rows = [line.rstrip("\n").split("\t") for line in file]
+
+    return sum(int(row[1]) for row in rows)
