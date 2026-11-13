@@ -1,3 +1,10 @@
+from pathlib import Path
+
+import pandas as pd
+
+DATA_DIRECTORY = Path(__file__).resolve().parents[1] / "data"
+
+
 def pregunta_13():
     """
     Combine las tablas `data/tbl0.tsv` y `data/tbl2.tsv` usando la columna
@@ -15,4 +22,6 @@ def pregunta_13():
         ...
     """
 
-    raise NotImplementedError
+    tbl0 = pd.read_csv(DATA_DIRECTORY / "tbl0.tsv", sep="\t")
+    tbl2 = pd.read_csv(DATA_DIRECTORY / "tbl2.tsv", sep="\t")
+    return tbl0.merge(tbl2, on="c0").groupby("c1")["c5b"].sum()
