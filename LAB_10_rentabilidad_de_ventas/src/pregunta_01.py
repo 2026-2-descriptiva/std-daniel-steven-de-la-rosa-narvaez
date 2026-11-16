@@ -1,4 +1,42 @@
+from pathlib import Path
+
 import pandas as pd
+
+ACTIVITY_DIRECTORY = Path(__file__).resolve().parents[1]
+DATA_FILE = ACTIVITY_DIRECTORY / "data" / "superstore_orders.csv.gz"
+SUBMISSION_DIRECTORY = ACTIVITY_DIRECTORY / "submission"
+
+DISCOUNT_BANDS = ["0%", "1%-5%", "6%-10%", "más de 10%"]
+MINIMUM_SEGMENT_LINES = 100
+
+
+def discount_band(discount):
+    if discount == 0:
+        return "0%"
+    if discount <= 0.05:
+        return "1%-5%"
+    if discount <= 0.10:
+        return "6%-10%"
+    return "más de 10%"
+
+
+def summarize(orders, by=None):
+    orders = orders.assign(
+        is_loss=orders["Profit"] < 0,
+        loss=orders["Profit"].where(orders["Profit"] < 0, 0).abs(),
+    )
+    grouped = orders.groupby(by, sort=False) if by else orders.groupby(lambda _: 0)
+    summary = grouped.agg(
+        lines=("Profit", "size"),
+        orders=("Order ID", "nunique"),
+        sales=("Sales", "sum"),
+        profit=("Profit", "sum"),
+        loss_lines=("is_loss", "sum"),
+        lost_profit=("loss", "sum"),
+    )
+    summary["profit_margin"] = summary["profit"] / summary["sales"]
+    summary["loss_line_rate"] = summary["loss_lines"] / summary["lines"]
+    return summary.reset_index(drop=by is None)
 
 
 def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -50,4 +88,61 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    orders = pd.read_csv(DATA_FILE, sep=";", decimal=",", encoding="utf-8-sig")
+    orders["discount_band"] = orders["Discount"].map(discount_band)
+
+    profitability_summary = summarize(orders)[
+        [
+            "lines",
+            "orders",
+            "sales",
+            "profit",
+            "profit_margin",
+            "loss_lines",
+            "loss_line_rate",
+            "lost_profit",
+        ]
+    ]
+
+    discount_summary = (
+        summarize(orders, "discount_band")
+        .set_index("discount_band")
+        .loc[DISCOUNT_BANDS]
+        .reset_index()[
+            [
+                "discount_band",
+                "lines",
+                "sales",
+                "profit",
+                "profit_margin",
+                "loss_line_rate",
+                "lost_profit",
+            ]
+        ]
+    )
+
+    priority_segments = (
+        summarize(orders, ["Customer Segment", "Product Category"])
+        .query("lines >= @MINIMUM_SEGMENT_LINES")
+        .sort_values("lost_profit", ascending=False)
+        .head(5)[
+            [
+                "Customer Segment",
+                "Product Category",
+                "lines",
+                "sales",
+                "profit",
+                "profit_margin",
+                "lost_profit",
+            ]
+        ]
+    )
+
+    SUBMISSION_DIRECTORY.mkdir(exist_ok=True)
+    profitability_summary.to_csv(
+        SUBMISSION_DIRECTORY / "profitability_summary.csv", index=False
+    )
+    discount_summary.to_csv(SUBMISSION_DIRECTORY / "discount_summary.csv", index=False)
+    priority_segments.to_csv(SUBMISSION_DIRECTORY / "priority_segments.csv", index=False)
+
+    return profitability_summary, discount_summary, priority_segments
